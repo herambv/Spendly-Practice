@@ -22,6 +22,26 @@
         </div>
     </div>
 
+    <!-- Date filter bar -->
+    <div class="filter-bar">
+        <div class="filter-presets">
+            <a href="{{ url_for('profile', date_from=preset_starts.this_month, date_to=today_str) }}"
+               class="filter-btn{% if active_preset == 'this_month' %} filter-btn--active{% endif %}">This Month</a>
+            <a href="{{ url_for('profile', date_from=preset_starts.last_3_months, date_to=today_str) }}"
+               class="filter-btn{% if active_preset == 'last_3_months' %} filter-btn--active{% endif %}">Last 3 Months</a>
+            <a href="{{ url_for('profile', date_from=preset_starts.last_6_months, date_to=today_str) }}"
+               class="filter-btn{% if active_preset == 'last_6_months' %} filter-btn--active{% endif %}">Last 6 Months</a>
+            <a href="{{ url_for('profile') }}"
+               class="filter-btn{% if active_preset == 'all_time' %} filter-btn--active{% endif %}">All Time</a>
+        </div>
+        <form class="filter-custom" method="GET" action="{{ url_for('profile') }}">
+            <input class="form-input filter-date" type="date" name="date_from" value="{{ date_from }}">
+            <span class="filter-sep">to</span>
+            <input class="form-input filter-date" type="date" name="date_to" value="{{ date_to }}">
+            <button class="btn-primary filter-apply" type="submit">Apply</button>
+        </form>
+    </div>
+
     <!-- Summary stats -->
     <div class="profile-stats">
         <div class="profile-stat-card">

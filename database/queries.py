@@ -1,5 +1,16 @@
 from database.db import get_db
 
+MONTH_NAMES = [
+    "", "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
+
+
+def _date_filter(date_from, date_to):
+    if date_from and date_to:
+        return " AND date BETWEEN ? AND ?", (date_from, date_to)
+    return "", ()
+
 
 def get_user_by_id(user_id):
     conn = get_db()
@@ -10,23 +21,24 @@ def get_user_by_id(user_id):
     if row is None:
         return None
     raw = row["created_at"]   # "YYYY-MM-DD HH:MM:SS"
-    month_names = ["", "January", "February", "March", "April", "May", "June",
-                   "July", "August", "September", "October", "November", "December"]
-    member_since = f"{month_names[int(raw[5:7])]} {raw[0:4]}"
+    member_since = f"{MONTH_NAMES[int(raw[5:7])]} {raw[0:4]}"
     initials = "".join(w[0].upper() for w in row["name"].split() if w)[:2]
     return {"name": row["name"], "email": row["email"],
             "initials": initials, "member_since": member_since}
 
 
-def get_summary_stats(user_id):
+def get_summary_stats(user_id, date_from=None, date_to=None):
     conn = get_db()
+    date_clause, date_params = _date_filter(date_from, date_to)
     agg = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt "
-        "FROM expenses WHERE user_id = ?", (user_id,)
+        "FROM expenses WHERE user_id = ?" + date_clause,
+        (user_id,) + date_params
     ).fetchone()
     top = conn.execute(
-        "SELECT category FROM expenses WHERE user_id = ? "
-        "GROUP BY category ORDER BY SUM(amount) DESC LIMIT 1", (user_id,)
+        "SELECT category FROM expenses WHERE user_id = ?" + date_clause +
+        " GROUP BY category ORDER BY SUM(amount) DESC LIMIT 1",
+        (user_id,) + date_params
     ).fetchone()
     conn.close()
     return {
@@ -36,20 +48,19 @@ def get_summary_stats(user_id):
     }
 
 
-def get_recent_transactions(user_id, limit=10):
+def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
     conn = get_db()
+    date_clause, date_params = _date_filter(date_from, date_to)
     rows = conn.execute(
         "SELECT date, description, category, amount FROM expenses "
-        "WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT ?",
-        (user_id, limit)
+        "WHERE user_id = ?" + date_clause + " ORDER BY date DESC, id DESC LIMIT ?",
+        (user_id,) + date_params + (limit,)
     ).fetchall()
     conn.close()
-    month_names = ["", "January", "February", "March", "April", "May", "June",
-                   "July", "August", "September", "October", "November", "December"]
     result = []
     for row in rows:
         d = row["date"]   # "YYYY-MM-DD"
-        formatted = f"{int(d[8:10]):02d} {month_names[int(d[5:7])]} {d[0:4]}"
+        formatted = f"{int(d[8:10]):02d} {MONTH_NAMES[int(d[5:7])]} {d[0:4]}"
         result.append({
             "date":        formatted,
             "description": row["description"],
@@ -59,11 +70,13 @@ def get_recent_transactions(user_id, limit=10):
     return result
 
 
-def get_category_breakdown(user_id):
+def get_category_breakdown(user_id, date_from=None, date_to=None):
     conn = get_db()
+    date_clause, date_params = _date_filter(date_from, date_to)
     rows = conn.execute(
         "SELECT category AS name, SUM(amount) AS cat_total FROM expenses "
-        "WHERE user_id = ? GROUP BY category ORDER BY cat_total DESC", (user_id,)
+        "WHERE user_id = ?" + date_clause + " GROUP BY category ORDER BY cat_total DESC",
+        (user_id,) + date_params
     ).fetchall()
     conn.close()
     if not rows:

@@ -1,4 +1,7 @@
+import os
+import secrets
 import sqlite3
+from datetime import date, datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import check_password_hash
 from database.db import init_db, seed_db, create_user, get_user_by_email
@@ -7,11 +10,26 @@ from database.queries import (
 )
 
 app = Flask(__name__)
-app.secret_key = "spendly-dev-secret"
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 with app.app_context():
     init_db()
     seed_db()
+
+
+def _parse_date(val):
+    try:
+        return datetime.strptime(val, "%Y-%m-%d").date() if val else None
+    except ValueError:
+        return None
+
+
+def _month_start(today, months_back):
+    m, y = today.month - months_back, today.year
+    while m <= 0:
+        m += 12
+        y -= 1
+    return date(y, m, 1)
 
 
 # ------------------------------------------------------------------ #
@@ -97,14 +115,48 @@ def profile():
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
+    date_from = _parse_date(request.args.get("date_from", ""))
+    date_to = _parse_date(request.args.get("date_to", ""))
+
+    if date_from and date_to and date_from > date_to:
+        flash("Start date must be before end date.")
+        date_from = date_to = None
+
+    today = date.today()
+    today_str = today.isoformat()
+    preset_starts = {
+        "this_month":    _month_start(today, 0).isoformat(),
+        "last_3_months": _month_start(today, 3).isoformat(),
+        "last_6_months": _month_start(today, 6).isoformat(),
+    }
+
+    active_preset = "all_time"
+    if date_from and date_to:
+        for key, start_iso in preset_starts.items():
+            if date_from.isoformat() == start_iso and date_to.isoformat() == today_str:
+                active_preset = key
+                break
+        else:
+            active_preset = "custom"
+
+    date_from_iso = date_from.isoformat() if date_from else None
+    date_to_iso = date_to.isoformat() if date_to else None
+
     user_id = session["user_id"]
     user = get_user_by_id(user_id)
-    stats = get_summary_stats(user_id)
-    transactions = get_recent_transactions(user_id)
-    categories = get_category_breakdown(user_id)
-    return render_template("profile.html",
-                           user=user, stats=stats,
-                           transactions=transactions, categories=categories)
+    stats = get_summary_stats(user_id, date_from=date_from_iso, date_to=date_to_iso)
+    transactions = get_recent_transactions(user_id, date_from=date_from_iso, date_to=date_to_iso)
+    categories = get_category_breakdown(user_id, date_from=date_from_iso, date_to=date_to_iso)
+
+    return render_template(
+        "profile.html",
+        user=user, stats=stats, transactions=transactions, categories=categories,
+        date_from=date_from_iso or "",
+        date_to=date_to_iso or "",
+        active_preset=active_preset,
+        preset_starts=preset_starts,
+        today_str=today_str,
+    )
 
 
 @app.route("/expenses/add")
@@ -123,4 +175,4 @@ def delete_expense(id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=os.environ.get("FLASK_DEBUG", "false").lower() == "true", port=5001)
