@@ -58,6 +58,16 @@ def get_user_by_email(email):
     return user
 
 
+def insert_expense(user_id, amount, category, expense_date, description):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO expenses (user_id, amount, category, date, description) VALUES (?, ?, ?, ?, ?)",
+        (user_id, amount, category, expense_date, description),
+    )
+    conn.commit()
+    conn.close()
+
+
 def seed_db():
     conn = get_db()
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0:

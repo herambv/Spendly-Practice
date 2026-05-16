@@ -32,6 +32,15 @@
     </nav>
 
     <main class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="flash-message flash-message--{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
         {% block content %}{% endblock %}
     </main>
 
@@ -40,8 +49,8 @@
             <span class="brand-icon">◈</span>
             <span class="footer-name">Spendly</span>
             <p class="footer-copy">Track every rupee. Own your finances.</p>
-            <a href="/terms">Terms and Conditions</a>
-            <a href="/privacy">Privacy Policy</a>
+            <a href="{{ url_for('terms') }}">Terms and Conditions</a>
+            <a href="{{ url_for('privacy') }}">Privacy Policy</a>
         </div>
     </footer>
 
