@@ -2,9 +2,9 @@ import os
 import secrets
 import sqlite3
 from datetime import date, datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, abort
 from werkzeug.security import check_password_hash
-from database.db import init_db, seed_db, create_user, get_user_by_email
+from database.db import init_db, seed_db, create_user, get_user_by_email, insert_expense
 from database.queries import (
     get_user_by_id, get_summary_stats, get_recent_transactions, get_category_breakdown
 )
@@ -32,6 +32,14 @@ def _month_start(today, months_back):
     return date(y, m, 1)
 
 
+CATEGORIES = ["Food", "Transport", "Bills", "Health", "Entertainment", "Shopping", "Other"]
+
+
+def _get_csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(32)
+    return session["csrf_token"]
+
 # ------------------------------------------------------------------ #
 # Routes                                                              #
 # ------------------------------------------------------------------ #
@@ -46,7 +54,10 @@ def register():
     if session.get("user_id"):
         return redirect(url_for("profile"))
     if request.method == "GET":
-        return render_template("register.html")
+        return render_template("register.html", csrf_token=_get_csrf_token())
+
+    if request.form.get("csrf_token") != session.get("csrf_token"):
+        abort(403)
 
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip()
@@ -54,18 +65,18 @@ def register():
     confirm_password = request.form.get("confirm_password", "")
 
     if not name:
-        return render_template("register.html", error="Name is required.", name=name, email=email)
+        return render_template("register.html", error="Name is required.", name=name, email=email, csrf_token=_get_csrf_token())
     if not email or "@" not in email:
-        return render_template("register.html", error="A valid email address is required.", name=name, email=email)
+        return render_template("register.html", error="A valid email address is required.", name=name, email=email, csrf_token=_get_csrf_token())
     if len(password) < 8:
-        return render_template("register.html", error="Password must be at least 8 characters.", name=name, email=email)
+        return render_template("register.html", error="Password must be at least 8 characters.", name=name, email=email, csrf_token=_get_csrf_token())
     if password != confirm_password:
-        return render_template("register.html", error="Passwords do not match.", name=name, email=email)
+        return render_template("register.html", error="Passwords do not match.", name=name, email=email, csrf_token=_get_csrf_token())
 
     try:
         create_user(name, email, password)
     except sqlite3.IntegrityError:
-        return render_template("register.html", error="An account with this email already exists.", name=name, email=email)
+        return render_template("register.html", error="An account with this email already exists.", name=name, email=email, csrf_token=_get_csrf_token())
 
     return redirect(url_for("login"))
 
@@ -75,14 +86,17 @@ def login():
     if session.get("user_id"):
         return redirect(url_for("profile"))
     if request.method == "GET":
-        return render_template("login.html")
+        return render_template("login.html", csrf_token=_get_csrf_token())
+
+    if request.form.get("csrf_token") != session.get("csrf_token"):
+        abort(403)
 
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "")
 
     user = get_user_by_email(email)
     if not user or not check_password_hash(user["password_hash"], password):
-        return render_template("login.html", error="Invalid email or password.", email=email)
+        return render_template("login.html", error="Invalid email or password.", email=email, csrf_token=_get_csrf_token())
 
     session.clear()
     session["user_id"] = user["id"]
@@ -119,7 +133,7 @@ def profile():
     date_to = _parse_date(request.args.get("date_to", ""))
 
     if date_from and date_to and date_from > date_to:
-        flash("Start date must be before end date.")
+        flash("Start date must be before end date.", "warning")
         date_from = date_to = None
 
     today = date.today()
@@ -159,9 +173,65 @@ def profile():
     )
 
 
-@app.route("/expenses/add")
+@app.route("/analytics")
+def analytics():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+    return render_template("analytics.html")
+
+
+@app.route("/expenses/add", methods=["GET", "POST"])
 def add_expense():
-    return "Add expense — coming in Step 7"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    today_str = date.today().isoformat()
+
+    if request.method == "GET":
+        return render_template(
+            "add_expense.html",
+            categories=CATEGORIES,
+            today=today_str,
+            csrf_token=_get_csrf_token(),
+        )
+
+    if request.form.get("csrf_token") != session.get("csrf_token"):
+        abort(403)
+
+    form = {
+        "amount":      request.form.get("amount", "").strip(),
+        "category":    request.form.get("category", ""),
+        "date":        request.form.get("date", "").strip(),
+        "description": request.form.get("description", "").strip(),
+    }
+
+    def _render_form(error):
+        return render_template(
+            "add_expense.html",
+            categories=CATEGORIES,
+            today=today_str,
+            csrf_token=_get_csrf_token(),
+            error=error,
+            **form,
+        )
+
+    try:
+        amount = round(float(form["amount"]), 2)
+        if amount < 0.01:
+            raise ValueError
+    except ValueError:
+        return _render_form("Amount must be a positive number.")
+
+    if form["category"] not in CATEGORIES:
+        return _render_form("Please select a valid category.")
+
+    if _parse_date(form["date"]) is None:
+        return _render_form("Please enter a valid date.")
+
+    description = form["description"][:200] if form["description"] else None
+    insert_expense(session["user_id"], amount, form["category"], form["date"], description)
+    flash("Expense added successfully.", "success")
+    return redirect(url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/edit")
