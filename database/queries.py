@@ -52,7 +52,7 @@ def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
     conn = get_db()
     date_clause, date_params = _date_filter(date_from, date_to)
     rows = conn.execute(
-        "SELECT date, description, category, amount FROM expenses "
+        "SELECT id, date, description, category, amount FROM expenses "
         "WHERE user_id = ?" + date_clause + " ORDER BY date DESC, id DESC LIMIT ?",
         (user_id,) + date_params + (limit,)
     ).fetchall()
@@ -62,6 +62,7 @@ def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
         d = row["date"]   # "YYYY-MM-DD"
         formatted = f"{int(d[8:10]):02d} {MONTH_NAMES[int(d[5:7])]} {d[0:4]}"
         result.append({
+            "id":          row["id"],
             "date":        formatted,
             "description": row["description"],
             "category":    row["category"],

@@ -4,7 +4,7 @@ import sqlite3
 from datetime import date, datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, session, abort
 from werkzeug.security import check_password_hash
-from database.db import init_db, seed_db, create_user, get_user_by_email, insert_expense
+from database.db import init_db, seed_db, create_user, get_user_by_email, insert_expense, get_expense_by_id, update_expense
 from database.queries import (
     get_user_by_id, get_summary_stats, get_recent_transactions, get_category_breakdown
 )
@@ -234,9 +234,62 @@ def add_expense():
     return redirect(url_for("profile"))
 
 
-@app.route("/expenses/<int:id>/edit")
+@app.route("/expenses/<int:id>/edit", methods=["GET", "POST"])
 def edit_expense(id):
-    return "Edit expense — coming in Step 8"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    expense = get_expense_by_id(id, session["user_id"])
+    if expense is None:
+        abort(404)
+
+    if request.method == "GET":
+        return render_template(
+            "edit_expense.html",
+            expense=expense,
+            categories=CATEGORIES,
+            csrf_token=_get_csrf_token(),
+        )
+
+    _form_tok = request.form.get("csrf_token")
+    _sess_tok = session.get("csrf_token")
+    if not _form_tok or not _sess_tok or _form_tok != _sess_tok:
+        abort(403)
+
+    form = {
+        "amount":      request.form.get("amount", "").strip(),
+        "category":    request.form.get("category", ""),
+        "date":        request.form.get("date", "").strip(),
+        "description": request.form.get("description", "").strip(),
+    }
+
+    def _render_form(error):
+        return render_template(
+            "edit_expense.html",
+            expense=expense,
+            categories=CATEGORIES,
+            csrf_token=_get_csrf_token(),
+            error=error,
+            **form,
+        )
+
+    try:
+        amount = round(float(form["amount"]), 2)
+        if amount < 0.01:
+            raise ValueError
+    except ValueError:
+        return _render_form("Amount must be a positive number.")
+
+    if form["category"] not in CATEGORIES:
+        return _render_form("Please select a valid category.")
+
+    if _parse_date(form["date"]) is None:
+        return _render_form("Please enter a valid date.")
+
+    description = form["description"][:200] if form["description"] else None
+    update_expense(id, session["user_id"], amount, form["category"], form["date"], description)
+    flash("Expense updated successfully.", "success")
+    return redirect(url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/delete")

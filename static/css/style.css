@@ -875,6 +875,26 @@ a { color: inherit; text-decoration: none; }
     color: var(--ink);
 }
 
+.tx-actions {
+    text-align: right;
+    white-space: nowrap;
+    width: 1%;
+}
+
+.tx-action-link {
+    font-size: 0.8rem;
+    color: var(--ink-muted);
+    text-decoration: none;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    transition: color 0.15s, background 0.15s;
+}
+
+.tx-action-link:hover {
+    color: var(--accent);
+    background: var(--accent-light);
+}
+
 /* Category badges */
 .cat-badge {
     display: inline-flex;

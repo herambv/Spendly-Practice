@@ -80,6 +80,7 @@
                             <th>Description</th>
                             <th>Category</th>
                             <th class="amount-cell">Amount</th>
+                            <th class="tx-actions"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -93,6 +94,9 @@
                                 </span>
                             </td>
                             <td class="amount-cell">{{ tx.amount }}</td>
+                            <td class="tx-actions">
+                                <a href="{{ url_for('edit_expense', id=tx.id) }}" class="tx-action-link">Edit</a>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
