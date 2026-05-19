@@ -1,10 +1,11 @@
+import hmac
 import os
 import secrets
 import sqlite3
 from datetime import date, datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, session, abort
 from werkzeug.security import check_password_hash
-from database.db import init_db, seed_db, create_user, get_user_by_email, insert_expense, get_expense_by_id, update_expense
+from database.db import init_db, seed_db, create_user, get_user_by_email, insert_expense, get_expense_by_id, update_expense, delete_expense as db_delete_expense
 from database.queries import (
     get_user_by_id, get_summary_stats, get_recent_transactions, get_category_breakdown
 )
@@ -170,6 +171,7 @@ def profile():
         active_preset=active_preset,
         preset_starts=preset_starts,
         today_str=today_str,
+        csrf_token=_get_csrf_token(),
     )
 
 
@@ -251,9 +253,9 @@ def edit_expense(id):
             csrf_token=_get_csrf_token(),
         )
 
-    _form_tok = request.form.get("csrf_token")
-    _sess_tok = session.get("csrf_token")
-    if not _form_tok or not _sess_tok or _form_tok != _sess_tok:
+    form_token = request.form.get("csrf_token")
+    session_token = session.get("csrf_token")
+    if not form_token or not session_token or not hmac.compare_digest(form_token, session_token):
         abort(403)
 
     form = {
@@ -292,9 +294,23 @@ def edit_expense(id):
     return redirect(url_for("profile"))
 
 
-@app.route("/expenses/<int:id>/delete")
+@app.route("/expenses/<int:id>/delete", methods=["POST"])
 def delete_expense(id):
-    return "Delete expense — coming in Step 9"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    form_token = request.form.get("csrf_token")
+    session_token = session.get("csrf_token")
+    if not form_token or not session_token or not hmac.compare_digest(form_token, session_token):
+        abort(403)
+
+    expense = get_expense_by_id(id, session["user_id"])
+    if expense is None:
+        abort(404)
+
+    db_delete_expense(id, session["user_id"])
+    flash("Expense deleted.", "success")
+    return redirect(url_for("profile"))
 
 
 if __name__ == "__main__":

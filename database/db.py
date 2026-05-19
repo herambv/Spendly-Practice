@@ -90,6 +90,16 @@ def update_expense(expense_id, user_id, amount, category, expense_date, descript
     conn.close()
 
 
+def delete_expense(expense_id, user_id):
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM expenses WHERE id = ? AND user_id = ?",
+        (expense_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def seed_db():
     conn = get_db()
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0:
